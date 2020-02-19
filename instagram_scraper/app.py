@@ -642,9 +642,6 @@ class InstagramScraper(object):
 
                 self.rhx_gis = ""
 
-                self.get_profile_pic(dst, executor, future_to_item, user, username)
-                self.get_profile_info(dst, username)
-
                 if self.logged_in:
                     self.get_stories(dst, executor, future_to_item, user, username)
 
@@ -681,86 +678,6 @@ class InstagramScraper(object):
         finally:
             self.quit = True
             self.logout()
-
-    def get_profile_pic(self, dst, executor, future_to_item, user, username):
-        if 'image' not in self.media_types:
-            return
-
-        if self.logged_in:
-            # Try Get the High-Resolution profile picture
-            url = USER_INFO.format(user['id'])
-            resp = self.get_json(url)
-
-            if resp is None:
-                self.logger.error('Error getting user info for {0}'.format(username))
-                return
-
-            user_info = json.loads(resp)['user']
-
-            if user_info['has_anonymous_profile_picture']:
-                return
-
-            try:
-                profile_pic_urls = [
-                    user_info['hd_profile_pic_url_info']['url'],
-                    user_info['hd_profile_pic_versions'][-1]['url'],
-                ]
-
-                profile_pic_url = next(url for url in profile_pic_urls if url is not None)
-            except (KeyError, IndexError, StopIteration):
-                self.logger.warning('Failed to get high resolution profile picture for {0}'.format(username))
-                profile_pic_url = user['profile_pic_url_hd']
-        else:
-                # If not logged_in take the Low-Resolution profile picture
-                profile_pic_url = user['profile_pic_url_hd']
-
-        item = {'urls': [profile_pic_url], 'username': username, 'shortcode':'', 'created_time': 1286323200, '__typename': 'GraphProfilePic'}
-
-        if self.latest is False or os.path.isfile(dst + '/' + item['urls'][0].split('/')[-1]) is False:
-            for item in tqdm.tqdm([item], desc='Searching {0} for profile pic'.format(username), unit=" images",
-                                  ncols=0, disable=self.quiet):
-                future = executor.submit(self.worker_wrapper, self.download, item, dst)
-                future_to_item[future] = item
-
-    def get_profile_info(self, dst, username):
-        if self.profile_metadata is False:
-            return
-        url = USER_URL.format(username)
-        resp = self.get_json(url)
-
-        if resp is None:
-            self.logger.error('Error getting user info for {0}'.format(username))
-            return
-
-        self.logger.info( 'Saving metadata general information on {0}.json'.format(username) )
-
-        user_info = json.loads(resp)['graphql']['user']
-
-        try:
-            profile_info = {
-                'biography': user_info['biography'],
-                'followers_count': user_info['edge_followed_by']['count'],
-                'following_count': user_info['edge_follow']['count'],
-                'full_name': user_info['full_name'],
-                'id': user_info['id'],
-                'is_business_account': user_info['is_business_account'],
-                'is_joined_recently': user_info['is_joined_recently'],
-                'is_private': user_info['is_private'],
-                'posts_count': user_info['edge_owner_to_timeline_media']['count'],
-                'profile_pic_url': user_info['profile_pic_url']
-            }
-        except (KeyError, IndexError, StopIteration):
-            self.logger.warning('Failed to build {0} profile info'.format(username))
-            return
-
-        item = {
-            'GraphProfileInfo': {
-                'info': profile_info,
-                'username': username,
-                'created_time': 1286323200
-            }
-        }
-        self.save_json(item, '{0}/{1}.json'.format(dst, username))
 
     def get_stories(self, dst, executor, future_to_item, user, username):
         """Scrapes the user's stories."""
